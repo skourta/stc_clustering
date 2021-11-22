@@ -8,7 +8,7 @@ import tensorflow as tf
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-from tensorflow.python.keras.optimizers import SGD
+from tensorflow.keras.optimizers import SGD
 
 import metrics
 from data_loader import load_data
@@ -21,14 +21,18 @@ def autoencoder(dims, act=tf.nn.leaky_relu, init='glorot_uniform'):
     h = x
 
     for i in range(n_stacks - 1):
-        h = tf.keras.layers.Dense(dims[i + 1], activation=act, kernel_initializer=init, name='encoder_%d' % i)(h)
-    h = tf.keras.layers.Dense(dims[-1], kernel_initializer=init, name='encoder_%d' % (n_stacks - 1))(h)
+        h = tf.keras.layers.Dense(
+            dims[i + 1], activation=act, kernel_initializer=init, name='encoder_%d' % i)(h)
+    h = tf.keras.layers.Dense(
+        dims[-1], kernel_initializer=init, name='encoder_%d' % (n_stacks - 1))(h)
 
     y = h
     for i in range(n_stacks - 1, 0, -1):
-        y = tf.keras.layers.Dense(dims[i], activation=act, kernel_initializer=init, name='decoder_%d' % i)(y)
+        y = tf.keras.layers.Dense(
+            dims[i], activation=act, kernel_initializer=init, name='decoder_%d' % i)(y)
 
-    y = tf.keras.layers.Dense(dims[0], kernel_initializer=init, name='decoder_0')(y)
+    y = tf.keras.layers.Dense(
+        dims[0], kernel_initializer=init, name='decoder_0')(y)
 
     return tf.keras.models.Model(inputs=x, outputs=y, name='AE'), tf.keras.models.Model(inputs=x, outputs=h,
                                                                                         name='encoder')
@@ -46,8 +50,9 @@ class ClusteringLayer(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         assert len(input_shape) == 2
-        input_dim = input_shape[1].value
-        self.input_spec = tf.keras.layers.InputSpec(dtype=tf.keras.backend.floatx(), shape=(None, input_dim))
+        input_dim = input_shape[1]
+        self.input_spec = tf.keras.layers.InputSpec(
+            dtype=tf.keras.backend.floatx(), shape=(None, input_dim))
         self.clusters = self.add_weight(shape=(self.n_clusters, input_dim), initializer='glorot_uniform',
                                         name='clusters')
         if self.initial_weights is not None:
@@ -57,10 +62,12 @@ class ClusteringLayer(tf.keras.layers.Layer):
 
     def call(self, inputs, **kwargs):
         q = 1.0 / (1.0 + (tf.keras.backend.sum(
-            tf.keras.backend.square(tf.keras.backend.expand_dims(inputs, axis=1) - self.clusters),
+            tf.keras.backend.square(tf.keras.backend.expand_dims(
+                inputs, axis=1) - self.clusters),
             axis=2) / self.alpha))
         q **= (self.alpha + 1.0) / 2.0
-        q = tf.keras.backend.transpose(tf.keras.backend.transpose(q) / tf.keras.backend.sum(q, axis=1))
+        q = tf.keras.backend.transpose(
+            tf.keras.backend.transpose(q) / tf.keras.backend.sum(q, axis=1))
         return q
 
     def compute_output_shape(self, input_shape):
@@ -91,8 +98,10 @@ class STC(object):
         self.autoencoder, self.encoder = autoencoder(self.dims, init=init)
 
         # prepare DEC model
-        clustering_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
-        self.model = tf.keras.models.Model(inputs=self.encoder.input, outputs=clustering_layer)
+        clustering_layer = ClusteringLayer(
+            self.n_clusters, name='clustering')(self.encoder.output)
+        self.model = tf.keras.models.Model(
+            inputs=self.encoder.input, outputs=clustering_layer)
 
     def pretrain(self, x, y=None, optimizer='adam', epochs=200, batch_size=256, save_dir='results/temp'):
         print('...Pretraining...')
@@ -111,7 +120,8 @@ class STC(object):
                     feature_model = tf.keras.models.Model(self.model.input,
                                                           self.model.get_layer('encoder_3').output)
                     features = feature_model.predict(self.x)
-                    km = KMeans(n_clusters=len(np.unique(self.y)), n_init=20, n_jobs=4)
+                    km = KMeans(n_clusters=len(np.unique(self.y)),
+                                n_init=20, n_jobs=4)
                     y_pred = km.fit_predict(features)
                     # print()
                     print(' ' * 8 + '|==>  acc: %.4f,  nmi: %.4f  <==|'
@@ -155,7 +165,8 @@ class STC(object):
         kmeans = KMeans(n_clusters=self.n_clusters, n_init=100)
         y_pred = kmeans.fit_predict(self.encoder.predict(x))
         y_pred_last = np.copy(y_pred)
-        self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
+        self.model.get_layer(name='clustering').set_weights(
+            [kmeans.cluster_centers_])
 
         loss = 0
         index = 0
@@ -170,17 +181,20 @@ class STC(object):
                     acc = np.round(metrics.acc(y, y_pred), 5)
                     nmi = np.round(metrics.nmi(y, y_pred), 5)
                     loss = np.round(loss, 5)
-                    print('Iter %d: acc = %.5f, nmi = %.5f' % (ite, acc, nmi), ' ; loss=', loss)
+                    print('Iter %d: acc = %.5f, nmi = %.5f' %
+                          (ite, acc, nmi), ' ; loss=', loss)
 
                 # check stop criterion
-                delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+                delta_label = np.sum(y_pred != y_pred_last).astype(
+                    np.float32) / y_pred.shape[0]
                 y_pred_last = np.copy(y_pred)
                 if ite > 0 and delta_label < tol:
                     print('delta_label ', delta_label, '< tol ', tol)
                     print('Reached tolerance threshold. Stopping training.')
                     break
 
-            idx = index_array[index * batch_size: min((index + 1) * batch_size, x.shape[0])]
+            idx = index_array[index *
+                              batch_size: min((index + 1) * batch_size, x.shape[0])]
             loss = self.model.train_on_batch(x=x[idx], y=p[idx])
             index = index + 1 if (index + 1) * batch_size <= x.shape[0] else 0
 
@@ -208,7 +222,8 @@ if __name__ == "__main__":
     parser.add_argument('--pretrain_epochs', default=15, type=int)
     parser.add_argument('--update_interval', default=30, type=int)
     parser.add_argument('--tol', default=0.0001, type=float)
-    parser.add_argument('--ae_weights', default='/data/search_snippets/results/ae_weights.h5')
+    parser.add_argument(
+        '--ae_weights', default='/data/search_snippets/results/ae_weights.h5')
     parser.add_argument('--save_dir', default='/data/search_snippets/results/')
     args = parser.parse_args()
 
@@ -234,7 +249,8 @@ if __name__ == "__main__":
     x, y = load_data(args.dataset)
     n_clusters = len(np.unique(y))
 
-    X_test, X_dev, y_test, y_dev = train_test_split(x, y, test_size=0.1, random_state=0)
+    X_test, X_dev, y_test, y_dev = train_test_split(
+        x, y, test_size=0.1, random_state=0)
     x, y = shuffle(X_test, y_test)
 
     # create model
